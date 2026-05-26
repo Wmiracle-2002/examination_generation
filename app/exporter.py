@@ -1,3 +1,4 @@
+import re
 import json
 from pathlib import Path
 from docx import Document
@@ -63,17 +64,21 @@ def build_word(title: str, questions: list[dict], output_path: str):
         run.font.size = Pt(12)
 
         for q in qs:
-            # 题目
+            # 题目内容（去掉图片占位符，保留文字）
             content = q["content"].strip()
-            p = doc.add_paragraph(f"{num}. {content}")
+            content_text = re.sub(r'\[图:[^\]]+\]', '[图]', content)
+            p = doc.add_paragraph(f"{num}. {content_text}")
             p.paragraph_format.space_after = Pt(4)
             num += 1
 
-            # 选项
+            # 选项逐行输出
             options = json.loads(q.get("options") or "[]")
-            if options:
-                opt_p = doc.add_paragraph("    ".join(options))
-                opt_p.paragraph_format.left_indent = Cm(0.5)
+            for opt in options:
+                if opt.startswith("[图:"):
+                    continue  # 选项图暂跳过
+                opt_p = doc.add_paragraph(opt)
+                opt_p.paragraph_format.left_indent = Cm(1)
+                opt_p.paragraph_format.space_after = Pt(2)
 
             doc.add_paragraph()
 
@@ -81,5 +86,10 @@ def build_word(title: str, questions: list[dict], output_path: str):
 
 
 def build_pdf(word_path: str, pdf_path: str):
+    import pythoncom
     from docx2pdf import convert
-    convert(word_path, pdf_path)
+    pythoncom.CoInitialize()
+    try:
+        convert(word_path, pdf_path)
+    finally:
+        pythoncom.CoUninitialize()

@@ -16,14 +16,20 @@ QUESTION_TYPES = {
     "计算": ["计算"],
 }
 
-# 匹配题目编号开头：1. / 1。/ 1、/ 1．
+# 匹配题目编号：1. / 1。/ 1、/ 1．（编号后必须有内容）
 _Q_NUM_RE = re.compile(r'^(\d+)[.。、．]\s*(.+)', re.DOTALL)
-# 匹配单独选项行（A. / A、 / A．）
-_OPTION_LINE_RE = re.compile(r'^([A-Da-d])[.、．\s](.+)')
-# 匹配子问题编号 (1) （1）
+# 匹配单独选项：A. / A、 / A．
+_OPTION_LINE_RE = re.compile(r'^[A-Da-d][.、．\s]')
+# 匹配子问题：(1) （1）
 _SUB_Q_RE = re.compile(r'^[（(]\d+[）)]')
-# 区块标题：含题型关键词且含"题"或"分"
-_SECTION_RE = re.compile(r'[题分]')
+# 大标题/区块标题模式：
+#   "第Ⅰ卷"、"第Ⅱ卷"、"一、二、三…"、"二．" 等开头
+#   含题型关键词 + "题"/"分" 且长度 < 60
+_SECTION_HEADING_RE = re.compile(
+    r'^(第[Ⅰ-Ⅹ一二三四五六七八九十\d]+[卷册]|[一二三四五六七八九十]+[、．.]\s*|[（(][一二三四五六七八九十]+[）)])'
+)
+# 题注行："第N题图"
+_CAPTION_RE = re.compile(r'^第\d+题图')
 
 
 def detect_type(text: str) -> str | None:
@@ -34,8 +40,23 @@ def detect_type(text: str) -> str | None:
     return None
 
 
+def _is_section_line(text: str) -> bool:
+    """判断是否为大标题/区块行，应整体跳过不并入题目。"""
+    # 数字开头的行是题目，不是区块标题
+    if re.match(r'^\d', text):
+        return False
+    if len(text) > 80:
+        return False
+    if _SECTION_HEADING_RE.match(text):
+        return True
+    # 含题型词且含"题"或"分"，短行
+    if detect_type(text) and re.search(r'[题分]', text) and len(text) < 60:
+        return True
+    return False
+
+
 def _extract_images_from_para(para, doc) -> list[str]:
-    """提取段落中所有图片，保存到 static/images，返回文件名列表。"""
+    """提取段落中所有图片，保存到 static/images/，返回文件名列表。"""
     STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     filenames = []
     for drawing in para._element.findall(".//" + qn("w:drawing")):
@@ -60,27 +81,15 @@ def _extract_images_from_para(para, doc) -> list[str]:
     return filenames
 
 
-def _para_tokens(para, doc) -> list[str]:
-    """将段落拆成文本+图片占位符的 token 列表。"""
-    tokens = []
-    text = para.text.strip()
-    if text:
-        tokens.append(text)
-    for fname in _extract_images_from_para(para, doc):
-        tokens.append(f"[图:{fname}]")
-    return tokens
-
-
 def _split_inline_options(text: str) -> list[str]:
-    """把 'A．x\tB．y\tC．z\tD．w' 这类同行选项拆成列表。"""
-    # 按制表符或 2+ 空格分割，再过滤掉不像选项的片段
+    """把 'A．x\tB．y\tC．z\tD．w' 拆成列表，至少匹配到2项才认为是同行多选项。"""
     parts = re.split(r'\t|[ 　]{2,}', text)
     options = []
     for p in parts:
         p = p.strip()
-        if p and re.match(r'^[A-Da-d][.、．\s]', p):
+        if p and _OPTION_LINE_RE.match(p):
             options.append(p)
-    return options
+    return options if len(options) >= 2 else []
 
 
 def parse_docx(file_path: str) -> list[dict]:
@@ -99,21 +108,25 @@ def parse_docx(file_path: str) -> list[dict]:
             current_q = None
 
     for para in doc.paragraphs:
-        tokens = _para_tokens(para, doc)
-        if not tokens:
-            continue
-
-        # 纯图片段落（无文字）：追加到当前题目
         text = para.text.strip()
-        if not text and tokens:
-            if current_q:
-                current_q["content"] += "\n" + "\n".join(tokens)
+        img_fnames = _extract_images_from_para(para, doc)
+        img_tokens = [f"[图:{f}]" for f in img_fnames]
+
+        # 纯图片段落（无文字）
+        if not text:
+            if img_tokens and current_q:
+                current_q["content"] += "\n" + "\n".join(img_tokens)
             continue
 
-        # 检测区块标题（含题型关键词 + "题"/"分"）
-        detected = detect_type(text)
-        if detected and _SECTION_RE.search(text) and len(text) < 50:
-            current_type = detected
+        # 跳过大标题/区块标题行（但先提取里面可能有的新题型）
+        if _is_section_line(text):
+            detected = detect_type(text)
+            if detected:
+                current_type = detected
+            continue
+
+        # 跳过题注行（"第12题图 第13题图…"）
+        if _CAPTION_RE.match(text):
             continue
 
         # 检测题目编号
@@ -121,8 +134,6 @@ def parse_docx(file_path: str) -> list[dict]:
         if m:
             flush()
             content_start = m.group(2)
-            # 把该段落的图片占位符也拼入题干
-            img_tokens = [t for t in tokens if t.startswith("[图:")]
             if img_tokens:
                 content_start += "\n" + "\n".join(img_tokens)
             current_q = {
@@ -138,28 +149,27 @@ def parse_docx(file_path: str) -> list[dict]:
         if current_q is None:
             continue
 
-        # 检测选项行（单独一行 A. / B. 格式）
-        mo = _OPTION_LINE_RE.match(text)
-        if mo:
-            # 先尝试拆分同行多选项
+        # 选项行
+        if _OPTION_LINE_RE.match(text):
             inline = _split_inline_options(text)
-            if len(inline) >= 2:
+            if inline:
                 current_q["options"].extend(inline)
             else:
                 current_q["options"].append(text)
-            # 该行可能同时含图片（选项图）
-            for t in tokens:
-                if t.startswith("[图:"):
-                    current_q["options"].append(t)
+            # 选项行附带图片（选项图）
+            if img_tokens:
+                current_q["options"].extend(img_tokens)
             continue
 
-        # 子问题编号行
+        # 子问题行
         if _SUB_Q_RE.match(text):
-            current_q["content"] += "\n" + "\n".join(tokens)
+            parts = [text] + img_tokens
+            current_q["content"] += "\n" + "\n".join(parts)
             continue
 
-        # 其余内容追加到题目（含图片题注行如"第12题图…"）
-        current_q["content"] += "\n" + "\n".join(tokens)
+        # 其余内容（续行、图片注释等）追加到题目
+        parts = [text] + img_tokens
+        current_q["content"] += "\n" + "\n".join(parts)
 
     flush()
     return questions

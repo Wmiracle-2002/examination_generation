@@ -242,13 +242,27 @@ function renderStats() {
     `<div class="stat-box"><div class="stat-num">${questions.length}</div><div class="stat-label">共计</div></div>`;
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function renderContent(content) {
-  // 替换 [图:filename] 为 <img> 标签，其余文本转义后换行转 <br>
-  const escaped = content
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return escaped.replace(/\[图:([^\]]+)\]/g,
-    (_, fname) => `<img src="/static/images/${fname}" style="max-width:180px;max-height:120px;vertical-align:middle;margin:2px 4px">`
-  ).replace(/\n/g,'<br>');
+  return escapeHtml(content)
+    .replace(/\[图:([^\]]+)\]/g,
+      (_, fname) => `<img src="/static/images/${fname}" style="max-width:200px;max-height:140px;vertical-align:middle;margin:3px 4px;border:1px solid #e5e7eb;border-radius:3px">`)
+    .replace(/\n/g,'<br>');
+}
+
+function renderOptions(optionsJson) {
+  const opts = JSON.parse(optionsJson || '[]');
+  if (!opts.length) return '';
+  return opts.map(o => {
+    if (o.startsWith('[图:')) {
+      const fname = o.match(/\[图:([^\]]+)\]/)?.[1];
+      return fname ? `<div style="margin:2px 0"><img src="/static/images/${fname}" style="max-width:180px;max-height:100px;border:1px solid #e5e7eb;border-radius:3px"></div>` : '';
+    }
+    return `<div style="padding:1px 0 1px 8px;color:#555">${escapeHtml(o)}</div>`;
+  }).join('');
 }
 
 function renderTable() {
@@ -260,7 +274,7 @@ function renderTable() {
     return `<tr class="${unconfirmed?'unconfirmed':''}">
       <td><input type="checkbox" ${isSelected?'checked':''} onchange="toggleSelect(${q.id})"></td>
       <td><span class="tag">${q.question_type}</span></td>
-      <td><div class="q-content">${renderContent(q.content)}</div></td>
+      <td><div class="q-content">${renderContent(q.content)}${renderOptions(q.options)}</div></td>
       <td>${points.map(p=>`<span class="tag">${p}</span>`).join('')}${unconfirmed?'<span style="color:#f59e0b;font-size:11px;display:block;margin-top:2px">待校正</span>':''}</td>
       <td><span class="diff diff-${q.difficulty}">${q.difficulty}</span></td>
       <td><button class="btn btn-outline btn-sm" onclick="openEdit(${q.id})">校正</button></td>
