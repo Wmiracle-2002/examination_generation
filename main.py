@@ -9,6 +9,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from app.database import init_db
@@ -18,8 +19,10 @@ app = FastAPI(title="智能组卷系统")
 
 app.include_router(exam.router, prefix="/api")
 
-for d in ["uploads", "outputs", "static"]:
-    Path(d).mkdir(exist_ok=True)
+for d in ["uploads", "outputs", "static/images"]:
+    Path(d).mkdir(parents=True, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 init_db()
 

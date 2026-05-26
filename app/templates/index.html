@@ -242,6 +242,15 @@ function renderStats() {
     `<div class="stat-box"><div class="stat-num">${questions.length}</div><div class="stat-label">共计</div></div>`;
 }
 
+function renderContent(content) {
+  // 替换 [图:filename] 为 <img> 标签，其余文本转义后换行转 <br>
+  const escaped = content
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return escaped.replace(/\[图:([^\]]+)\]/g,
+    (_, fname) => `<img src="/static/images/${fname}" style="max-width:180px;max-height:120px;vertical-align:middle;margin:2px 4px">`
+  ).replace(/\n/g,'<br>');
+}
+
 function renderTable() {
   const tbody = document.getElementById('questionTable');
   tbody.innerHTML = questions.map(q => {
@@ -251,7 +260,7 @@ function renderTable() {
     return `<tr class="${unconfirmed?'unconfirmed':''}">
       <td><input type="checkbox" ${isSelected?'checked':''} onchange="toggleSelect(${q.id})"></td>
       <td><span class="tag">${q.question_type}</span></td>
-      <td><div class="q-content">${q.content.substring(0,80)}${q.content.length>80?'…':''}</div></td>
+      <td><div class="q-content">${renderContent(q.content)}</div></td>
       <td>${points.map(p=>`<span class="tag">${p}</span>`).join('')}${unconfirmed?'<span style="color:#f59e0b;font-size:11px;display:block;margin-top:2px">待校正</span>':''}</td>
       <td><span class="diff diff-${q.difficulty}">${q.difficulty}</span></td>
       <td><button class="btn btn-outline btn-sm" onclick="openEdit(${q.id})">校正</button></td>
@@ -277,7 +286,7 @@ function renderSelected() {
   list.innerHTML = [...selected.values()].map(q => {
     total += SCORES[q.question_type] || 0;
     return `<div class="selected-item">
-      <span>[${q.question_type}] ${q.content.substring(0,30)}…</span>
+      <span>[${q.question_type}] ${q.content.replace(/\[图:[^\]]+\]/g,'[图]').substring(0,40)}…</span>
       <button class="btn btn-outline btn-sm" onclick="removeSelected(${q.id})">✕</button>
     </div>`;
   }).join('');
