@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+venv*/
+*.egg-info/
+
+# Env & secrets
+.env
+
+# Database
+exam.db
+
+# Generated & uploaded files
+outputs/
+uploads/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+package-lock.json
+
+# IDE
+.idea/
+.vscode/
+
+# Playwright MCP state
+.playwright-mcp/
+
+# gstack
+.gstack/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Screenshots
+*.png

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能组卷系统</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", sans-serif; background: #f5f7fa; color: #333; }
+  .header { background: #1a56db; color: white; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .card h2 { font-size: 16px; margin-bottom: 16px; color: #1a56db; border-bottom: 2px solid #e8f0fe; padding-bottom: 8px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+  select, input[type=text], input[type=number] {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 10px;
+    font-size: 14px; outline: none; background: white;
+  }
+  select:focus, input:focus { border-color: #1a56db; }
+  .btn {
+    padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 14px; font-weight: 500; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: #1a56db; color: white; }
+  .btn-success { background: #059669; color: white; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-outline { background: white; border: 1px solid #d1d5db; color: #333; }
+  .tag { display: inline-block; background: #e8f0fe; color: #1a56db; border-radius: 4px; padding: 2px 8px; font-size: 12px; margin: 2px; }
+  .diff { display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #e5e7eb; text-align: center; line-height: 20px; font-size: 11px; font-weight: 600; }
+  .diff-1,.diff-2 { background: #d1fae5; color: #065f46; }
+  .diff-3 { background: #fef3c7; color: #92400e; }
+  .diff-4,.diff-5 { background: #fee2e2; color: #991b1b; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: #f9fafb; text-align: left; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #6b7280; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  tr:hover td { background: #fafafa; }
+  .q-content { max-width: 400px; white-space: pre-wrap; font-size: 13px; }
+  .selected-list { min-height: 60px; }
+  .selected-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f0f7ff; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+  .badge { background: #1a56db; color: white; border-radius: 12px; padding: 2px 8px; font-size: 12px; }
+  .toast { position: fixed; top: 20px; right: 20px; background: #059669; color: white; padding: 12px 20px; border-radius: 8px; display: none; z-index: 999; }
+  .unconfirmed { background: #fffbeb; }
+  .upload-area { border: 2px dashed #d1d5db; border-radius: 8px; padding: 32px; text-align: center; color: #9ca3af; cursor: pointer; transition: border-color .2s; }
+  .upload-area:hover { border-color: #1a56db; color: #1a56db; }
+  .stats { display: flex; gap: 16px; flex-wrap: wrap; }
+  .stat-box { background: #f0f7ff; border-radius: 8px; padding: 12px 20px; text-align: center; min-width: 100px; }
+  .stat-num { font-size: 28px; font-weight: 700; color: #1a56db; }
+  .stat-label { font-size: 12px; color: #6b7280; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>📋</div>
+  <h1>智能组卷系统 · 初中物理</h1>
+</div>
+
+<div class="container">
+
+  <!-- 上传卷子 -->
+  <div class="card">
+    <h2>📤 上传试卷（.docx）</h2>
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size:32px;margin-bottom:8px">📄</div>
+      <div>点击选择或拖拽Word试卷到此处</div>
+      <div style="font-size:12px;margin-top:4px">自动解析题目并AI打标考点和难度</div>
+    </div>
+    <input type="file" id="fileInput" accept=".docx" style="display:none" onchange="uploadFile(this)">
+    <div id="uploadMsg" style="margin-top:12px;font-size:14px;color:#059669"></div>
+  </div>
+
+  <!-- 题库 + 组卷 -->
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:16px">
+
+    <!-- 题库 -->
+    <div class="card">
+      <h2>📚 题库</h2>
+      <div class="row" style="margin-bottom:16px">
+        <div>
+          <label>题型</label>
+          <select id="filterType" onchange="loadQuestions()">
+            <option value="">全部</option>
+            <option>单选</option><option>填空</option><option>作图</option>
+            <option>论述</option><option>实验</option><option>计算</option>
+          </select>
+        </div>
+        <div>
+          <label>考点</label>
+          <input type="text" id="filterPoint" placeholder="如：浮力" onchange="loadQuestions()" style="width:120px">
+        </div>
+        <div>
+          <label>难度</label>
+          <select id="filterDiffMin" onchange="loadQuestions()">
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3" selected>3</option><option value="4">4</option><option value="5">5</option>
+          </select>
+          <span style="padding:0 4px;color:#999">-</span>
+          <select id="filterDiffMax" onchange="loadQuestions()">
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+            <option value="5" selected>5</option>
+          </select>
+        </div>
+        <div>
+          <label>　</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin-bottom:0">
+            <input type="checkbox" id="filterUnconfirmed" onchange="loadQuestions()"> 仅待校正
+          </label>
+        </div>
+      </div>
+
+      <div class="stats" id="statsBar" style="margin-bottom:16px"></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px"></th>
+            <th>题型</th>
+            <th>题目内容</th>
+            <th>考点</th>
+            <th>难度</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="questionTable"></tbody>
+      </table>
+    </div>
+
+    <!-- 已选 + 组卷 -->
+    <div>
+      <div class="card">
+        <h2>✅ 已选题目 <span class="badge" id="selectedCount">0</span></h2>
+        <div class="selected-list" id="selectedList"></div>
+        <div style="margin-top:12px;font-size:13px;color:#6b7280">
+          预计总分：<strong id="totalScore">0</strong> 分
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📝 生成试卷</h2>
+        <div style="margin-bottom:12px">
+          <label>试卷标题</label>
+          <input type="text" id="paperTitle" placeholder="如：九年级3月月考物理" style="width:100%">
+        </div>
+        <button class="btn btn-success" style="width:100%" onclick="generatePaper()">生成 Word + PDF</button>
+        <div id="downloadLinks" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 编辑弹窗 -->
+<div id="editModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;display:none;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:10px;padding:24px;width:500px;max-height:80vh;overflow-y:auto">
+    <h3 style="margin-bottom:16px">校正题目标签</h3>
+    <input type="hidden" id="editId">
+    <div style="margin-bottom:12px">
+      <label>考点（逗号分隔）</label>
+      <input type="text" id="editPoints" style="width:100%">
+    </div>
+    <div style="margin-bottom:12px">
+      <label>难度（1-5）</label>
+      <input type="number" id="editDiff" min="1" max="5" style="width:80px">
+    </div>
+    <div style="margin-bottom:12px">
+      <label>答案</label>
+      <textarea id="editAnswer" style="width:100%;height:60px;border:1px solid #d1d5db;border-radius:6px;padding:8px;font-size:14px"></textarea>
+    </div>
+    <div style="margin-bottom:16px">
+      <label>解析</label>
+      <textarea id="editAnalysis" style="width:100%;height:80px;border:1px solid #d1d5db;border-radius:6px;padding:8px;font-size:14px"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存并确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SCORES = {单选:2,填空:1,作图:2,论述:4,实验:1,计算:6};
+let questions = [];
+let selected = new Map(); // id -> question
+
+async function uploadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const msg = document.getElementById('uploadMsg');
+  msg.textContent = '⏳ 上传并解析中，AI打标需要约30秒...';
+  msg.style.color = '#1a56db';
+
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/upload', {method:'POST', body:form});
+    const data = await res.json();
+    if (res.ok) {
+      msg.textContent = `✅ ${data.message}`;
+      msg.style.color = '#059669';
+      loadQuestions();
+    } else {
+      msg.textContent = `❌ ${data.detail}`;
+      msg.style.color = '#dc2626';
+    }
+  } catch(e) {
+    msg.textContent = '❌ 上传失败，请重试';
+    msg.style.color = '#dc2626';
+  }
+  input.value = '';
+}
+
+async function loadQuestions() {
+  const params = new URLSearchParams({
+    difficulty_min: document.getElementById('filterDiffMin').value,
+    difficulty_max: document.getElementById('filterDiffMax').value,
+  });
+  const type = document.getElementById('filterType').value;
+  const point = document.getElementById('filterPoint').value;
+  const unconfirmed = document.getElementById('filterUnconfirmed').checked;
+  if (type) params.append('question_type', type);
+  if (point) params.append('knowledge_point', point);
+  if (unconfirmed) params.append('unconfirmed_only', 'true');
+
+  const res = await fetch('/api/questions?' + params);
+  questions = await res.json();
+  renderTable();
+  renderStats();
+}
+
+function renderStats() {
+  const counts = {};
+  questions.forEach(q => counts[q.question_type] = (counts[q.question_type]||0) + 1);
+  document.getElementById('statsBar').innerHTML =
+    Object.entries(counts).map(([t,n]) =>
+      `<div class="stat-box"><div class="stat-num">${n}</div><div class="stat-label">${t}题</div></div>`
+    ).join('') +
+    `<div class="stat-box"><div class="stat-num">${questions.length}</div><div class="stat-label">共计</div></div>`;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('questionTable');
+  tbody.innerHTML = questions.map(q => {
+    const points = JSON.parse(q.knowledge_points || '[]');
+    const isSelected = selected.has(q.id);
+    const unconfirmed = !q.ai_tagged;
+    return `<tr class="${unconfirmed?'unconfirmed':''}">
+      <td><input type="checkbox" ${isSelected?'checked':''} onchange="toggleSelect(${q.id})"></td>
+      <td><span class="tag">${q.question_type}</span></td>
+      <td><div class="q-content">${q.content.substring(0,80)}${q.content.length>80?'…':''}</div></td>
+      <td>${points.map(p=>`<span class="tag">${p}</span>`).join('')}${unconfirmed?'<span style="color:#f59e0b;font-size:11px;display:block;margin-top:2px">待校正</span>':''}</td>
+      <td><span class="diff diff-${q.difficulty}">${q.difficulty}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="openEdit(${q.id})">校正</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleSelect(id) {
+  const q = questions.find(q => q.id === id);
+  if (!q) return;
+  if (selected.has(id)) selected.delete(id);
+  else selected.set(id, q);
+  renderSelected();
+}
+
+function renderSelected() {
+  const list = document.getElementById('selectedList');
+  const count = document.getElementById('selectedCount');
+  const totalEl = document.getElementById('totalScore');
+
+  count.textContent = selected.size;
+  let total = 0;
+  list.innerHTML = [...selected.values()].map(q => {
+    total += SCORES[q.question_type] || 0;
+    return `<div class="selected-item">
+      <span>[${q.question_type}] ${q.content.substring(0,30)}…</span>
+      <button class="btn btn-outline btn-sm" onclick="removeSelected(${q.id})">✕</button>
+    </div>`;
+  }).join('');
+  totalEl.textContent = total;
+}
+
+function removeSelected(id) {
+  selected.delete(id);
+  renderTable();
+  renderSelected();
+}
+
+function openEdit(id) {
+  const q = questions.find(q => q.id === id);
+  if (!q) return;
+  document.getElementById('editId').value = id;
+  document.getElementById('editPoints').value = JSON.parse(q.knowledge_points||'[]').join('，');
+  document.getElementById('editDiff').value = q.difficulty;
+  document.getElementById('editAnswer').value = q.answer || '';
+  document.getElementById('editAnalysis').value = q.analysis || '';
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+async function saveEdit() {
+  const id = document.getElementById('editId').value;
+  const points = document.getElementById('editPoints').value.split(/[，,]/).map(s=>s.trim()).filter(Boolean);
+  const data = {
+    knowledge_points: points,
+    difficulty: parseInt(document.getElementById('editDiff').value),
+    answer: document.getElementById('editAnswer').value,
+    analysis: document.getElementById('editAnalysis').value,
+    ai_tagged: 1,
+  };
+  await fetch(`/api/questions/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+  closeModal();
+  showToast('已保存');
+  loadQuestions();
+}
+
+async function generatePaper() {
+  if (selected.size === 0) { showToast('请先选择题目', true); return; }
+  const title = document.getElementById('paperTitle').value || '物理试卷';
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({title, question_ids: [...selected.keys()]}),
+  });
+  const data = await res.json();
+  if (res.ok) {
+    document.getElementById('downloadLinks').innerHTML =
+      `<a href="${data.word}" class="btn btn-outline" style="display:inline-block;margin-right:8px;margin-top:4px">⬇ 下载 Word</a>
+       <a href="${data.pdf}" class="btn btn-primary" style="display:inline-block;margin-top:4px">⬇ 下载 PDF</a>`;
+    showToast('生成成功！');
+  } else {
+    showToast(data.detail, true);
+  }
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = isError ? '#dc2626' : '#059669';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2500);
+}
+
+// 拖拽上传
+const area = document.getElementById('uploadArea');
+area.addEventListener('dragover', e => { e.preventDefault(); area.style.borderColor='#1a56db'; });
+area.addEventListener('dragleave', () => area.style.borderColor='#d1d5db');
+area.addEventListener('drop', e => {
+  e.preventDefault();
+  area.style.borderColor='#d1d5db';
+  const file = e.dataTransfer.files[0];
+  if (file) { document.getElementById('fileInput').files = e.dataTransfer.files; uploadFile(document.getElementById('fileInput')); }
+});
+
+loadQuestions();
+</script>
+</body>
+</html>
